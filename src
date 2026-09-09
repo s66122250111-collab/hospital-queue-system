@@ -1,0 +1,138 @@
+import java.util.*;
+
+// Class แทนข้อมูลผู้ป่วย
+class Patient {
+    private String id;
+    private String name;
+    private int arrivalTime;
+    private int severity; // 1 = Critical, 2 = Urgent, 3 = Normal
+    private int serviceTime;
+
+    public Patient(String id, String name, int arrivalTime, int severity, int serviceTime) {
+        this.id = id;
+        this.name = name;
+        this.arrivalTime = arrivalTime;
+        this.severity = severity;
+        this.serviceTime = serviceTime;
+    }
+
+    public String getId() { return id; }
+    public int getArrivalTime() { return arrivalTime; }
+    public int getSeverity() { return severity; }
+}
+
+// Algorithm A: Normal FIFO Queue (ArrayDeque)
+class HospitalSystemA {
+    private Queue<Patient> queue = new ArrayDeque<>();
+
+    public void arrive(Patient p) { queue.offer(p); }
+    public Patient serve() { return queue.poll(); }
+    public boolean isEmpty() { return queue.isEmpty(); }
+}
+
+// Algorithm B: Priority Queue (Min-Heap based on Severity -> Arrival Time)
+class HospitalSystemB {
+    private PriorityQueue<Patient> pQueue = new PriorityQueue<>(
+        Comparator.comparingInt(Patient::getSeverity)
+                  .thenComparingInt(Patient::getArrivalTime)
+    );
+
+    public void arrive(Patient p) { pQueue.offer(p); }
+    public Patient serve() { return pQueue.poll(); }
+    public boolean isEmpty() { return pQueue.isEmpty(); }
+}
+
+public class AlgorithmExperiment {
+    private static final int WARMUP_ROUNDS = 3;
+    private static final int TEST_ROUNDS = 5;
+    private static final int[] N_SIZES = {100, 1000, 10000, 50000};
+    private static final long BASE_SEED = 42L;
+
+    public static void main(String[] args) {
+        System.out.println("=========================================================");
+        System.out.println("        HOSPITAL QUEUE ALGORITHM EXPERIMENT RESULTS      ");
+        System.out.println("=========================================================");
+        
+        // 1. JVM Warm-up phase เพื่อป้องกันผลกระทบจาก JIT Cold Start
+        runWarmup();
+
+        System.out.printf("%-10s | %-20s | %-20s%n", "Data Size (N)", "Alg A: FIFO (ms)", "Alg B: Priority (ms)");
+        System.out.println("---------------------------------------------------------");
+
+        // 2. รันการทดสอบวัดประสิทธิภาพจริงตามขนาด N
+        for (int n : N_SIZES) {
+            double avgTimeA = benchmarkAlgA(n, TEST_ROUNDS);
+            double avgTimeB = benchmarkAlgB(n, TEST_ROUNDS);
+            System.out.printf("%-10d | %-20.4f | %-20.4f%n", n, avgTimeA, avgTimeB);
+        }
+        System.out.println("=========================================================");
+    }
+
+    // สร้างชุดข้อมูลทดสอบแบบสุ่มโดยกำหนด Seed เพื่อให้ผลลัพธ์ย้อนกลับมาทำซ้ำได้ (Reproducible)
+    private static List<Patient> generateData(int n, long seed) {
+        Random rand = new Random(seed);
+        List<Patient> list = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            String id = String.format("P%06d", i + 1);
+            String name = "Patient_" + (i + 1);
+            int arrivalTime = i + 1;
+            int severity = rand.nextInt(3) + 1; // สุ่ม 1 (Critical), 2 (Urgent), 3 (Normal)
+            int serviceTime = rand.nextInt(15) + 5;
+            list.add(new Patient(id, name, arrivalTime, severity, serviceTime));
+        }
+        return list;
+    }
+
+    // ระบบ Warm-up กระตุ้น JIT Compiler
+    private static void runWarmup() {
+        List<Patient> warmupData = generateData(2000, 999L);
+        HospitalSystemA sysA = new HospitalSystemA();
+        HospitalSystemB sysB = new HospitalSystemB();
+        for (int r = 0; r < WARMUP_ROUNDS; r++) {
+            for (Patient p : warmupData) sysA.arrive(p);
+            while (!sysA.isEmpty()) sysA.serve();
+            for (Patient p : warmupData) sysB.arrive(p);
+            while (!sysB.isEmpty()) sysB.serve();
+        }
+    }
+
+    // วัดเวลา Algorithm A (FIFO) เฉลี่ย 5 รอบ
+    private static double benchmarkAlgA(int n, int rounds) {
+        long totalNano = 0;
+        for (int r = 0; r < rounds; r++) {
+            List<Patient> data = generateData(n, BASE_SEED + r);
+            HospitalSystemA sysA = new HospitalSystemA();
+
+            long start = System.nanoTime();
+            for (Patient p : data) {
+                sysA.arrive(p);
+            }
+            while (!sysA.isEmpty()) {
+                sysA.serve();
+            }
+            long end = System.nanoTime();
+            totalNano += (end - start);
+        }
+        return (double) totalNano / rounds / 1_000_000.0; // แปลง นาโนวินาที เป็น มิลลิวินาที (ms)
+    }
+
+    // วัดเวลา Algorithm B (Priority Queue) เฉลี่ย 5 รอบ
+    private static double benchmarkAlgB(int n, int rounds) {
+        long totalNano = 0;
+        for (int r = 0; r < rounds; r++) {
+            List<Patient> data = generateData(n, BASE_SEED + r);
+            HospitalSystemB sysB = new HospitalSystemB();
+
+            long start = System.nanoTime();
+            for (Patient p : data) {
+                sysB.arrive(p);
+            }
+            while (!sysB.isEmpty()) {
+                sysB.serve();
+            }
+            long end = System.nanoTime();
+            totalNano += (end - start);
+        }
+        return (double) totalNano / rounds / 1_000_000.0; // แปลง นาโนวินาที เป็น มิลลิวินาที (ms)
+    }
+}
